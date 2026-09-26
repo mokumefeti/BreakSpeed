@@ -1,10 +1,16 @@
 import streamlit as st
 import numpy as np
-import wave
-from math import sqrt
-import matplotlib.pyplot as plt
+import soundfile as sf
+import plotly.graph_objects as go
 
-SAMPLERATE = 48000
+from streamlit_mic_recorder import mic_recorder
+from scipy.signal import find_peaks
+from math import sqrt
+
+# -----------------------------
+# 定数
+# -----------------------------
+
 BALL_DIA = 5.71
 
 st.set_page_config(
@@ -14,9 +20,11 @@ st.set_page_config(
 
 st.title("🎱 BreakSpeed")
 
-# ----------------------------
+# -----------------------------
 # 距離設定
-# ----------------------------
+# -----------------------------
+
+st.header("手玉位置")
 
 col1, col2 = st.columns(2)
 
@@ -24,16 +32,16 @@ with col1:
     x2 = st.number_input(
         "ヘッドから球（個分後ろ）",
         min_value=0.0,
-        step=0.1,
-        value=0.0
+        value=0.0,
+        step=0.1
     )
 
 with col2:
     y2 = st.number_input(
         "レールから球（個分離す）",
         min_value=0.0,
-        step=0.1,
-        value=0.0
+        value=0.0,
+        step=0.1
     )
 
 real_x2 = 127 + x2 * BALL_DIA
@@ -49,112 +57,94 @@ st.metric(
     f"{distance_cm:.2f} cm"
 )
 
-st.divider()
+# -----------------------------
+# 感度
+# -----------------------------
 
-uploaded_file = st.file_uploader(
-    "衝突音 wav ファイル",
-    type=["wav"]
+threshold_ratio = st.slider(
+    "感度",
+    min_value=0.05,
+    max_value=0.60,
+    value=0.15,
+    step=0.01
 )
 
-# ----------------------------
-# ピーク検出
-# ----------------------------
+# -----------------------------
+# 表示時間
+# -----------------------------
 
-def simple_find_peaks(
-    data,
-    threshold,
-    distance
-):
-    peaks = []
+display_sec = st.slider(
+    "表示時間",
+    min_value=0.1,
+    max_value=1.0,
+    value=0.8,
+    step=0.1
+)
 
-    last_peak = -distance
+st.divider()
 
-    for i in range(1, len(data)-1):
+# -----------------------------
+# 録音
+# -----------------------------
 
-        if (
-            data[i] > threshold
-            and data[i] > data[i-1]
-            and data[i] > data[i+1]
-            and i - last_peak >= distance
-        ):
-            peaks.append(i)
-            last_peak = i
+audio = mic_recorder(
+    start_prompt="🎤 録音開始",
+    stop_prompt="■ 録音停止",
+    just_once=False
+)
 
-    return np.array(peaks)
+# -----------------------------
+# 解析
+# -----------------------------
 
-# ----------------------------
-# メイン解析
-# ----------------------------
+if audio:
 
-if uploaded_file:
+    st.success("録音完了")
 
-    wav = wave.open(uploaded_file)
+    filename = "record.wav"
 
-    sample_rate = wav.getframerate()
+    with open(filename, "wb") as f:
+        f.write(audio["bytes"])
 
-    frames = wav.readframes(
-        wav.getnframes()
-    )
+    signal, samplerate = sf.read(filename)
 
-    wav.close()
+    if len(signal.shape) > 1:
+        signal = signal[:, 0]
 
-    audio = np.frombuffer(
-        frames,
-        dtype=np.int16
-    )
+    signal = signal.astype(np.float32)
 
-    audio = (
-        audio.astype(np.float32)
-        / 32768.0
-    )
+    absbuf = np.abs(signal)
 
-    absbuf = np.abs(audio)
+    threshold = np.max(absbuf) * threshold_ratio
 
-    fig, ax = plt.subplots(
-        figsize=(12, 4)
-    )
-
-    ax.plot(audio)
-
-    ax.set_title("波形")
-
-    st.pyplot(fig)
-
-    peaks = simple_find_peaks(
+    peaks, info = find_peaks(
         absbuf,
-        np.max(absbuf) * 0.15,
-        int(0.08 * sample_rate)
+        height=threshold,
+        distance=int(0.08 * samplerate),
+        prominence=threshold
     )
 
-    if len(peaks) < 2:
+    peak1 = None
+    peak2 = None
 
-        st.error(
-            "ピークが2個以上見つかりません"
-        )
-
-    else:
+    if len(peaks) >= 2:
 
         peak2 = peaks[
             np.argmax(absbuf[peaks])
         ]
 
         candidates = peaks[
-            peaks < peak2 - int(0.08 * sample_rate)
+            peaks <
+            peak2 - int(0.08 * samplerate)
         ]
 
-        if len(candidates) == 0:
-
-            st.error(
-                "1回目ピーク検出失敗"
-            )
-
-        else:
+        if len(candidates) > 0:
 
             peak1 = candidates[-1]
 
             dt = (
                 peak2 - peak1
-            ) / sample_rate
+            ) / samplerate
 
             speed_kmh = (
                 distance_cm / 100
@@ -164,28 +154,117 @@ if uploaded_file:
                 f"速度 = {speed_kmh:.2f} km/h"
             )
 
-            st.write(
+            st.info(
                 f"Δt = {dt*1000:.1f} ms"
             )
 
-            fig2, ax2 = plt.subplots(
-                figsize=(12, 4)
+    else:
+        st.error("ピーク不足")
+
+    # -----------------------------
+    # 表示範囲切り出し
+    # ----------------*------------
+
+    if peak1 is not None:
+        center = peak1
+        half_width = int(
+            samplerate *
+            display_sec/ 2
+        )
+
+        start = max(
+            0,
+            center*- half_width
+        )
+        end = min(
+            len(signal),
+           center + half_width
+        )
+
+    else:
+
+        start = 0
+        end = min(
+            len(signal),
+            int(
+               display_sec * samplerate
             )
+        )
 
-            ax2.plot(audio)
+    view = signal[start:end]
+    t = (
+        np.arange(len(view))
+        / samplerate
+    )
 
-            ax2.axvline(
-                peak1,
-                color="yellow",
-                label="1回目"
+    fig = go.Figure()
+
+    # 波形
+
+    fig.add_trace(
+        go.Scatter(
+            x=t,
+            y=view,
+            mode="lines",
+            name="wavefo*m",
+            line=dict(
+                color="lime",
+                width=1
             )
+        )
+    )
 
-            ax2.axvline(
-                peak2,
-                color="cyan",
-                label="2回目"
-            )
+    # 閾値線
+    fig.add_hline(
+        y=threshold,
+        line_dash="dash",
+        line_color="red"
+    )
 
-            ax2.legend()
+    fig.add_hline(
+        y=-threshold,
+        line_dash="dash",
+        line_color="red"
+    )
 
-            st.pyplot(fig2)
+    # ピーク線
+
+    if peak1 is not None:
+
+        x1 = (
+            peak1 - start
+        ) / samplerate
+
+        fig.add_vline(
+            x=x1,
+            line_color="yellow",
+            line_width=2
+        )
+
+    if peak2 is not None:
+
+        x2line = (
+            peak2 - start
+        ) / samplerate
+
+        fig.add_vline(
+            x=x2line,
+            line_color="cyan",
+            line_width=2
+        )
+
+    fig.update_layout(
+        height=500,
+        title="波形解析",
+        xaxis_title="時間 (sec)",
+        yaxis_title="振幅",
+        dragmode="zoom",
+        showlegend=False
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
+
+    st.audio(audio["bytes"])
