@@ -196,6 +196,28 @@ if ctx.state.playing and ctx.audio_receiver:
     except:
         pass
 
+    st.write("playing =", ctx.state.playing)
+
+    st.write(
+        "audio_receiver =",
+        ctx.audio_receiver is not None
+    )
+
+    try:
+
+        frames = ctx.audio_receiver.get_frames(
+            timeout=1
+        )
+
+        st.write(
+            "受信フレーム数",
+            len(frames)
+        )
+
+    except Exception as e:
+
+        st.error(e)
+
 # ==================================================
 # 待機中は直近3秒だけ保持
 # ==================================================
