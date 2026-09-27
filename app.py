@@ -100,6 +100,7 @@ if audio:
     st.success("録音完了")
     st.write(audio.keys())
     st.write(audio["format"])
+    st.write(audio)
 
 try:
 
