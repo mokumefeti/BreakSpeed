@@ -248,15 +248,6 @@ if not st.session_state.post_trigger:
             st.session_state.samples[-MAX_BUFFER:]
         )
 
-    st.write(
-        "samples type =",
-        type(st.session_state.samples)
-    )
-
-    st.write(
-        "sample count =",
-        len(st.session_state.samples)
-    )
 
 # ==================================================
 # 状態表示
@@ -513,6 +504,16 @@ if (
             st.warning(
                 "ピークが2個見つかりません"
             )
+
+st.write(
+    "samples type =",
+    type(st.session_state.samples)
+)
+
+st.write(
+    "sample count =",
+    len(st.session_state.samples)
+)
 
 # ==================================================
 # リセット
