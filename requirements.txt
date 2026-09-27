@@ -1,6 +1,6 @@
 streamlit
-streamlit-mic-recorder
 numpy
-soundfile
-plotly
 scipy
+plotly
+streamlit-mic-recorder
+imageio-ffmpeg

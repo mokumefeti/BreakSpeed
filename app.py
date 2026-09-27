@@ -1,6 +1,9 @@
 import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
+import tempfile
+import subprocess
+from scipy.io import wavfile
 
 from streamlit_mic_recorder import mic_recorder
 from scipy.signal import find_peaks
@@ -95,12 +98,39 @@ audio = mic_recorder(
 if audio:
 
     st.success("録音完了")
+    st.write(audio.keys())
 
     try:
 
-        wav_buffer = BytesIO(audio["bytes"])
+        with tempfile.NamedTemporaryFile(
+            suffix=".webm",
+            delete=False
+        ) as webm_file:
 
-        samplerate, signal = wavfile.read(wav_buffer)
+            webm_file.write(audio["bytes"])
+            webm_path = webm_file.name
+
+        wav_path = webm_path.replace(
+            ".webm",
+            ".wav"
+        )
+
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-i",
+                webm_path,
+                "-ac",
+                "1",
+                wav_path
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+
+        samplerate, signal = wavfile.read(
+            wav_path
+        )
 
         if signal.ndim > 1:
             signal = signal[:, 0]
