@@ -4,6 +4,7 @@ import threading
 
 from streamlit_webrtc import (
     webrtc_streamer,
+    WebRtcMode,
     AudioProcessorBase
 )
 
@@ -42,14 +43,36 @@ class AudioProcessor(AudioProcessorBase):
         return frame
 
 
+# ctx = webrtc_streamer(
+#     key="test",
+#     audio_processor_factory=AudioProcessor,
+#     media_stream_constraints={
+#         "audio": True,
+#         "video": False,
+#     }
+# )
+
 ctx = webrtc_streamer(
-    key="test",
-    audio_processor_factory=AudioProcessor,
+    key="audio",
+    mode=WebRtcMode.SENDONLY,
+    rtc_configuration={
+        "iceServers": [
+            {
+                "urls": [
+                    "stun:stun.l.google.com:19302"
+                ]
+            }
+        ]
+    },
     media_stream_constraints={
-        "audio": True,
         "video": False,
-    }
+        "audio": True
+    },
+    audio_processor_factory=AudioProcessor,
 )
+
+st.write("processor =", ctx.audio_processor)
+st.write("playing =", ctx.state.playing)
 
 if ctx.audio_processor:
 
