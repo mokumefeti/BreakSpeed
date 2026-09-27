@@ -8,10 +8,9 @@ from streamlit_webrtc import (
     webrtc_streamer,
     WebRtcMode,
 )
+
 from math import sqrt
 import time
-
-SAMPLERATE = 48000
 
 # ==================================================
 # 定数
@@ -38,7 +37,7 @@ st.markdown("""
 <style>
 
 html, body, [class*="css"] {
-    font-size: 22px;
+    font-size:22px;
 }
 
 p, label {
@@ -55,6 +54,25 @@ p, label {
 st.title("🎱 BreakSpeed")
 
 # ==================================================
+# session_state
+# ==================================================
+
+if "samples" not in st.session_state:
+    st.session_state.samples = []
+
+if "post_trigger" not in st.session_state:
+    st.session_state.post_trigger = False
+
+if "analysis_done" not in st.session_state:
+    st.session_state.analysis_done = False
+
+if "captured_signal" not in st.session_state:
+    st.session_state.captured_signal = None
+
+if "trigger_time" not in st.session_state:
+    st.session_state.trigger_time = None
+
+# ==================================================
 # 距離設定
 # ==================================================
 
@@ -63,6 +81,7 @@ st.header("手玉位置")
 col1, col2 = st.columns(2)
 
 with col1:
+
     x2 = st.number_input(
         "ヘッドから球何個分後ろ",
         min_value=0.0,
@@ -71,6 +90,7 @@ with col1:
     )
 
 with col2:
+
     y2 = st.number_input(
         "レールから球何個分離す",
         min_value=0.0,
@@ -92,7 +112,7 @@ st.metric(
 )
 
 # ==================================================
-# 感度
+# 解析設定
 # ==================================================
 
 st.header("解析設定")
@@ -121,29 +141,9 @@ record_sec = st.slider(
     0.5
 )
 
-st_autorefresh(interval=500, key="refresh")
-
-# ------------------------------
-# session_state
-# ------------------------------
-if "samples" not in st.session_state:
-    st.session_state.samples = []
-
-if "post_trigger" not in st.session_state:
-    st.session_state.post_trigger = False
-
-if "analysis_done" not in st.session_state:
-    st.session_state.analysis_done = False
-
-if "captured_signal" not in st.session_state:
-    st.session_state.captured_signal = None
-
-if "trigger_time" not in st.session_state:
-    st.session_state.trigger_time = None
-
-# ------------------------------
-# webrtc
-# ------------------------------
+# ==================================================
+# WebRTC
+# ==================================================
 
 ctx = webrtc_streamer(
     key="audio",
@@ -151,14 +151,13 @@ ctx = webrtc_streamer(
     media_stream_constraints={
         "video": False,
         "audio": True,
-    },
+    }
 )
 
-# ------------------------------
+# ==================================================
 # 音声取得
-# ------------------------------
+# ==================================================
 
-level = 0
 level = 0
 
 if ctx.state.playing and ctx.audio_receiver:
@@ -197,131 +196,141 @@ if ctx.state.playing and ctx.audio_receiver:
     except:
         pass
 
-    # 常時3秒保存
-    if not st.session_state.post_trigger:
+# ==================================================
+# 待機中は直近3秒だけ保持
+# ==================================================
 
-        MAX_BUFFER = 1.5 * SAMPLERATE
+if not st.session_state.post_trigger:
 
-        if len(st.session_state.samples) > MAX_BUFFER:
+    MAX_BUFFER = 1.5 * SAMPLERATE
 
-            st.session_state.samples = (
-                st.session_state.samples[-MAX_BUFFER:]
-            )
+    if len(st.session_state.samples) > MAX_BUFFER:
 
-        st.metric(
-            "保存サンプル数",
-            len(st.session_state.samples)
+        st.session_state.samples = (
+            st.session_state.samples[-MAX_BUFFER:]
         )
 
+# ==================================================
+# 状態表示
+# ==================================================
 
-    # 録音確認表示
-    st.subheader("マイク状態")
+st.header("マイク状態")
 
-    col1, col2 = st.columns(2)
+c1, c2, c3 = st.columns(3)
 
-    with col1:
-        st.metric(
-            "現在音量",
-            int(level)
-        )
+with c1:
 
-    with col2:
-
-        if level < 1000:
-            state = "🎤待機中"
-
-        elif level < 5000:
-            state = "🔊録音中"
-
-        else:
-            state = "💥衝突候補"
-
-        st.metric(
-            "状態",
-            state
-        )
-
-    st.progress(
-        min(level / 20000, 1.0)
+    st.metric(
+        "現在音量",
+        int(level)
     )
 
-    # ==================================================
-    # 波形表示
-    # ==================================================
-    if len(st.session_state.samples):
+with c2:
 
-        wave = np.array(
+    st.metric(
+        "保存サンプル数",
+        len(st.session_state.samples)
+    )
+
+with c3:
+
+    if level < 1000:
+
+        state = "🎤待機中"
+
+    elif level < trigger_level:
+
+        state = "🔊入力あり"
+
+    else:
+
+        state = "💥ブレイク候補"
+
+    st.metric(
+        "状態",
+        state
+    )
+
+st.progress(
+    min(level / 20000, 1.0)
+)
+
+# ==================================================
+# リアルタイム波形
+# ==================================================
+
+if len(st.session_state.samples):
+
+    wave = np.array(
+        st.session_state.samples,
+        dtype=np.float32
+    )
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scatter(
+            y=wave,
+            mode="lines",
+            name="Audio"
+        )
+    )
+
+    fig.update_layout(
+        title="リアルタイム波形",
+        height=350
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
+
+# ==================================================
+# ブレイク検出
+# ==================================================
+
+if (
+    level > trigger_level
+    and
+    not st.session_state.post_trigger
+    and
+    not st.session_state.analysis_done
+):
+
+    st.session_state.post_trigger = True
+
+    st.session_state.trigger_time = time.time()
+
+# ==================================================
+# ブレイク後録音
+# ==================================================
+
+if st.session_state.post_trigger:
+
+    elapsed = (
+        time.time()
+        - st.session_state.trigger_time
+    )
+
+    st.info(
+        f"💥 ブレイク検出後録音中 {elapsed:.1f}/{record_sec:.1f} sec"
+    )
+
+    if elapsed >= record_sec:
+
+        st.session_state.post_trigger = False
+
+        st.session_state.analysis_done = True
+
+        st.session_state.captured_signal = np.array(
             st.session_state.samples,
             dtype=np.float32
         )
 
-        fig = go.Figure()
-
-        fig.add_trace(
-            go.Scatter(
-                y=wave,
-                mode="lines"
-            )
-        )
-
-        fig.update_layout(
-            title="リアルタイム波形",
-            height=300
-        )
-
-        st.plotly_chart(
-            fig,
-            use_container_width=True
-        )
-
-    if (
-        level > trigger_level
-        and
-        not st.session_state.post_trigger
-        and
-        not st.session_state.analysis_done
-    ):
-
-        st.session_state.post_trigger = True
-
-        st.session_state.trigger_time = time.time()
-
         st.success(
-            "💥 ブレイク検出"
+            "✅ 録音完了"
         )
-
-    # ブレイク後3秒録音
-    if st.session_state.post_trigger:
-
-        elapsed = (
-            time.time()
-            - st.session_state.trigger_time
-        )
-
-        st.info(
-            f"衝突後録音中 {elapsed:.1f}/3.0 sec"
-        )
-
-        if elapsed >= record_sec:
-
-            st.session_state.post_trigger = False
-
-            st.session_state.analysis_done = True
-
-            st.session_state.captured_signal = np.array(
-                st.session_state.samples,
-                dtype=np.float32
-            )
-
-            st.success(
-                "✅ 録音完了"
-            )
-
-        st.metric(
-            "保存サンプル数",
-            len(st.session_state.samples)
-        )
-
 
 # ==================================================
 # 解析
@@ -343,7 +352,7 @@ if (
 
     else:
 
-        signal = signal / peak
+        signal /= peak
 
         absbuf = np.abs(signal)
 
@@ -361,13 +370,15 @@ if (
             )
         )
 
+        st.subheader("解析結果")
+
         fig2 = go.Figure()
 
         fig2.add_trace(
             go.Scatter(
                 y=signal,
                 mode="lines",
-                name="Wave"
+                name="Signal"
             )
         )
 
@@ -387,8 +398,7 @@ if (
             )
 
         fig2.update_layout(
-            height=500,
-            title="解析結果"
+            height=500
         )
 
         st.plotly_chart(
@@ -456,21 +466,21 @@ if (
                 "ピークが2個見つかりません"
             )
 
+# ==================================================
+# リセット
+# ==================================================
 
-    # リセットボタン
-    if st.button("次の測定"):
+if st.button("次の測定"):
 
-        st.session_state.samples = []
+    st.session_state.samples = []
 
-        st.session_state.post_trigger = False
+    st.session_state.post_trigger = False
 
-        st.session_state.analysis_done = False
+    st.session_state.analysis_done = False
 
-        st.session_state.captured_signal = None
+    st.session_state.captured_signal = None
 
-        st.session_state.trigger_time = None
+    st.session_state.trigger_time = None
 
-        st.rerun()
-
-
+    st.rerun()
 
