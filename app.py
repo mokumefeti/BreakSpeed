@@ -6,32 +6,57 @@ import time
 
 from math import sqrt
 from scipy.signal import find_peaks
+from streamlit_autorefresh import st_autorefresh
+
 from streamlit_webrtc import (
     webrtc_streamer,
-    AudioProcessorBase
+    AudioProcessorBase,
 )
 
-# =====================================
+# ==================================================
 # 定数
-# =====================================
+# ==================================================
 
 BALL_DIA = 5.71
 SAMPLERATE = 48000
 
-# =====================================
-# ページ
-# =====================================
+# ==================================================
+# ページ設定
+# ==================================================
 
 st.set_page_config(
     page_title="BreakSpeed",
     layout="wide"
 )
 
+st_autorefresh(
+    interval=500,
+    key="refresh"
+)
+
+st.markdown("""
+<style>
+
+html, body, [class*="css"] {
+    font-size: 22px;
+}
+
+p, label {
+    font-size:22px !important;
+}
+
+[data-testid="metric-container"]{
+    font-size:28px !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
 st.title("🎱 BreakSpeed")
 
-# =====================================
+# ==================================================
 # 距離設定
-# =====================================
+# ==================================================
 
 st.header("手玉位置")
 
@@ -39,7 +64,7 @@ col1, col2 = st.columns(2)
 
 with col1:
     x2 = st.number_input(
-        "ヘッドから球（個分後ろ）",
+        "ヘッドから球何個分後ろ",
         min_value=0.0,
         value=0.0,
         step=0.1
@@ -47,7 +72,7 @@ with col1:
 
 with col2:
     y2 = st.number_input(
-        "レールから球（個分離す）",
+        "レールから球何個分離す",
         min_value=0.0,
         value=0.0,
         step=0.1
@@ -66,37 +91,39 @@ st.metric(
     f"{distance_cm:.2f} cm"
 )
 
-# =====================================
+# ==================================================
 # 感度
-# =====================================
+# ==================================================
+
+st.header("解析設定")
 
 threshold_ratio = st.slider(
-    "解析感度",
-    min_value=0.05,
-    max_value=0.50,
-    value=0.15,
-    step=0.01
+    "ピーク感度",
+    0.05,
+    0.50,
+    0.15,
+    0.01
 )
 
 trigger_level = st.slider(
     "録音トリガ",
-    min_value=0.05,
-    max_value=0.80,
-    value=0.20,
-    step=0.01
+    0.01,
+    0.80,
+    0.15,
+    0.01
 )
 
-display_sec = st.slider(
-    "表示時間",
-    min_value=0.1,
-    max_value=1.0,
-    value=0.8,
-    step=0.1
+record_sec = st.slider(
+    "録音時間",
+    0.5,
+    2.0,
+    1.0,
+    0.1
 )
 
-# =====================================
-# 音声処理
-# =====================================
+# ==================================================
+# Audio
+# ==================================================
 
 class AudioProcessor(AudioProcessorBase):
 
@@ -105,6 +132,10 @@ class AudioProcessor(AudioProcessorBase):
         self.lock = threading.Lock()
 
         self.samples = []
+
+        self.level = 0
+
+        self.state = "waiting"
 
         self.detected = False
 
@@ -120,27 +151,29 @@ class AudioProcessor(AudioProcessorBase):
 
         with self.lock:
 
-            self.samples.extend(audio)
+            self.samples.extend(audio.tolist())
+
+            if len(self.samples) > SAMPLERATE * 5:
+                self.samples = self.samples[-SAMPLERATE * 5:]
 
             level = np.max(np.abs(audio))
 
-            if level > 0:
+            self.level = level / 32768.0
 
-                level_norm = level / 32768.0
-
-                if (
-                    not self.detected
-                    and
-                    level_norm > trigger_level
-                ):
-                    self.detected = True
-                    self.detect_time = time.time()
+            if (
+                not self.detected
+                and
+                self.level > trigger_level
+            ):
+                self.detected = True
+                self.detect_time = time.time()
+                self.state = "recording"
 
         return frame
 
-# =====================================
-# 録音
-# =====================================
+# ==================================================
+# WebRTC
+# ==================================================
 
 ctx = webrtc_streamer(
     key="breakspeed",
@@ -151,21 +184,26 @@ ctx = webrtc_streamer(
     }
 )
 
-# =====================================
+# ==================================================
 # 状態表示
-# =====================================
+# ==================================================
 
 if ctx.audio_processor:
 
     proc = ctx.audio_processor
 
-    if not proc.detected:
+    st.metric(
+        "マイクレベル",
+        f"{proc.level:.3f}"
+    )
+
+    if proc.state == "waiting":
 
         st.info(
             "🎤 待機中... ブレイクしてください"
         )
 
-    else:
+    elif proc.state == "recording":
 
         elapsed = (
             time.time()
@@ -173,78 +211,188 @@ if ctx.audio_processor:
         )
 
         st.success(
-            "💥 衝突音検出"
+            f"💥 衝突音検出 {elapsed:.1f} sec"
         )
 
-        st.write(
-            f"録音継続中 {elapsed:.1f} sec"
+    # ==================================================
+    # 波形表示
+    # ==================================================
+
+    with proc.lock:
+
+        recent = np.array(
+            proc.samples,
+            dtype=np.float32
         )
 
-        # 0.5秒収録後に解析
+    if len(recent) > 1000:
 
-        if (
-            elapsed > 0.5
-            and
-            not proc.analysis_done
-        ):
+        display_count = min(
+            len(recent),
+            int(display_sec * SAMPLERATE)
+        )
+
+        wave = recent[-display_count:]
+
+        fig = go.Figure()
+
+        fig.add_trace(
+            go.Scatter(
+                y=wave,
+                mode="lines",
+                name="Wave"
+            )
+        )
+
+        fig.update_layout(
+            height=300,
+            title="音声波形"
+        )
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
+
+    # ==================================================
+    # 自動解析
+    # ==================================================
+
+    if (
+        proc.detected
+        and
+        not proc.analysis_done
+    ):
+
+        elapsed = (
+            time.time()
+            - proc.detect_time
+        )
+
+        if elapsed >= record_sec:
 
             proc.analysis_done = True
 
-            signal = np.array(
-                proc.samples,
-                dtype=np.float32
-            )
+            with proc.lock:
 
-            if len(signal) < 1000:
+                signal = np.array(
+                    proc.samples,
+                    dtype=np.float32
+                )
 
-                st.error("録音不足")
-                st.stop()
-
-            signal /= np.max(
+            peak = np.max(
                 np.abs(signal)
             )
 
-            absbuf = np.abs(signal)
+            if peak < 10:
 
-            threshold = (
-                np.max(absbuf)
-                * threshold_ratio
-            )
+                st.error(
+                    "音量が小さすぎます"
+                )
 
-            peaks, _ = find_peaks(
-                absbuf,
-                height=threshold,
-                distance=int(
-                    0.08 * SAMPLERATE
-                ),
-                prominence=threshold
-            )
+            else:
 
-            peak1 = None
-            peak2 = None
+                signal = signal / peak
 
-            if len(peaks) >= 2:
+                absbuf = np.abs(signal)
 
-                peak2 = peaks[
-                    np.argmax(
-                        absbuf[peaks]
+                threshold = (
+                    np.max(absbuf)
+                    * threshold_ratio
+                )
+
+                peaks, prop = find_peaks(
+                    absbuf,
+                    height=threshold,
+                    prominence=threshold,
+                    distance=int(
+                        0.02 * SAMPLERATE
                     )
-                ]
+                )
 
-                candidates = peaks[
-                    peaks <
-                    peak2 -
-                    int(
-                        0.08 *
-                        SAMPLERATE
+                fig2 = go.Figure()
+
+                fig2.add_trace(
+                    go.Scatter(
+                        y=signal,
+                        mode="lines",
+                        name="Signal"
                     )
-                ]
+                )
 
-                if len(candidates):
+                if len(peaks):
 
-                    peak1 = candidates[-1]
+                    fig2.add_trace(
+                        go.Scatter(
+                            x=peaks,
+                            y=signal[peaks],
+                            mode="markers",
+                            marker=dict(
+                                size=10,
+                                color="red"
+                            ),
+                            name="Peaks"
+                        )
+                    )
 
-                    dt = (
-                        peak2
-                        - peak1
+                fig2.update_layout(
+                    height=400,
+                    title="解析結果"
+                )
+
+                st.plotly_chart(
+                    fig2,
+                    use_container_width=True
+                )
+
+                st.write(
+                    f"検出ピーク数: {len(peaks)}"
+                )
+
+                if len(peaks) >= 2:
+
+                    peak2 = peaks[
+                        np.argmax(
+                            absbuf[peaks]
+                        )
+                    ]
+
+                    before = peaks[
+                        peaks < peak2
+                    ]
+
+                    if len(before):
+
+                        peak1 = before[-1]
+
+                        dt = (
+                            peak2 - peak1
+                        ) / SAMPLERATE
+
+                        speed = (
+                            distance_cm / dt
+                        ) / 100
+
+                        speed_kmh = (
+                            speed * 3.6
+                        )
+
+                        st.success(
+                            f"推定速度 : {speed_kmh:.1f} km/h"
+                        )
+
+                        st.write(
+                            f"時間差 : {dt*1000:.1f} ms"
+                        )
+
+                    else:
+
+                        st.warning(
+                            "1つ目のピークが見つかりません"
+                        )
+
+                else:
+
+                    st.warning(
+                        "ピークが2個見つかりません"
                     )

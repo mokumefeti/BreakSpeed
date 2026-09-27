@@ -3,4 +3,5 @@ streamlit-webrtc
 numpy
 scipy
 plotly
+streamlit-autorefresh
 av
