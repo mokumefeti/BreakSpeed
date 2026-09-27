@@ -113,16 +113,13 @@ trigger_level = st.slider(
     500
 )
 
-if elapsed >= record_sec:
-
-    record_sec = st.slider(
-        "ブレイク後録音時間",
-        1.0,
-        5.0,
-        3.0,
-        0.5
-    )
-
+record_sec = st.slider(
+    "ブレイク後録音時間",
+    1.0,
+    5.0,
+    3.0,
+    0.5
+)
 
 st_autorefresh(interval=500, key="refresh")
 
@@ -305,7 +302,7 @@ if ctx.state.playing and ctx.audio_receiver:
             f"衝突後録音中 {elapsed:.1f}/3.0 sec"
         )
 
-        if elapsed >= 3.0:
+        if elapsed >= record_sec:
 
             st.session_state.post_trigger = False
 
