@@ -134,7 +134,7 @@ threshold_ratio = st.slider(
 )
 
 trigger_level = st.slider(
-    "ブレイク検出レベル",
+    "ブレイク検出レベル 録音開始トリガー",
     1000,
     20000,
     6000,
@@ -235,29 +235,28 @@ if ctx.state.playing and ctx.audio_receiver:
 
         st.error(e)
 
-# ==================================================
-# 待機中は直近3秒だけ保持
-# ==================================================
+    # ==================================================
+    # 待機中は直近3秒だけ保持
+    # ==================================================
+    if not st.session_state.post_trigger:
 
-if not st.session_state.post_trigger:
+        MAX_BUFFER = record_sec * SAMPLERATE
 
-    MAX_BUFFER = record_sec * SAMPLERATE
+        if len(st.session_state.samples) > MAX_BUFFER:
 
-    if len(st.session_state.samples) > MAX_BUFFER:
+            st.session_state.samples = (
+                st.session_state.samples[-MAX_BUFFER:]
+            )
 
-        st.session_state.samples = (
-            st.session_state.samples[-MAX_BUFFER:]
-        )
+            st.write(
+                "samples type =",
+                type(st.session_state.samples)
+            )
 
-        st.write(
-            "samples type =",
-            type(st.session_state.samples)
-        )
-
-        st.write(
-            "sample count =",
-            len(st.session_state.samples)
-        )
+            st.write(
+                "sample count =",
+                len(st.session_state.samples)
+            )
 
 # ==================================================
 # 状態表示
@@ -300,9 +299,11 @@ with c3:
         state
     )
 
-st.progress(
-    min(level / 20000, 1.0)
+progress_value = int(
+    min(level / 20000, 1.0) * 100
 )
+
+st.progress(progress_value)
 
 # ==================================================
 # リアルタイム波形
