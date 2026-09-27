@@ -235,28 +235,29 @@ if ctx.state.playing and ctx.audio_receiver:
 
         st.error(e)
 
-    # ==================================================
-    # 待機中は直近3秒だけ保持
-    # ==================================================
-    if not st.session_state.post_trigger:
+# ==================================================
+# 待機中は直近3秒だけ保持
+# ==================================================
+# if not st.session_state.post_trigger:
+if ctx.state.playing
 
-        MAX_BUFFER = record_sec * SAMPLERATE
+    MAX_BUFFER = 1.5* SAMPLERATE
 
-        if len(st.session_state.samples) > MAX_BUFFER:
+    if len(st.session_state.samples) > MAX_BUFFER:
 
-            st.session_state.samples = (
-                st.session_state.samples[-MAX_BUFFER:]
-            )
+        st.session_state.samples = (
+            st.session_state.samples[-MAX_BUFFER:]
+        )
 
-            st.write(
-                "samples type =",
-                type(st.session_state.samples)
-            )
+        st.write(
+            "samples type =",
+            type(st.session_state.samples)
+        )
 
-            st.write(
-                "sample count =",
-                len(st.session_state.samples)
-            )
+        st.write(
+            "sample count =",
+            len(st.session_state.samples)
+        )
 
 # ==================================================
 # 状態表示
