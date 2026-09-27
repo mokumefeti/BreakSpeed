@@ -239,7 +239,7 @@ if ctx.state.playing and ctx.audio_receiver:
 # 待機中は直近3秒だけ保持
 # ==================================================
 # if not st.session_state.post_trigger:
-if ctx.state.playing
+if ctx.state.playing:
 
     MAX_BUFFER = 1.5* SAMPLERATE
 
