@@ -3,8 +3,8 @@ import numpy as np
 import plotly.graph_objects as go
 import tempfile
 import subprocess
+import librosa
 from scipy.io import wavfile
-
 from streamlit_mic_recorder import mic_recorder
 from scipy.signal import find_peaks
 from scipy.io import wavfile
@@ -99,49 +99,33 @@ if audio:
 
     st.success("録音完了")
     st.write(audio.keys())
+    st.write(audio["format"])
 
-    try:
+try:
 
-        with tempfile.NamedTemporaryFile(
-            suffix=".webm",
-            delete=False
-        ) as webm_file:
+    suffix = "." + audio["format"]
 
-            webm_file.write(audio["bytes"])
-            webm_path = webm_file.name
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=suffix
+    ) as tmp:
 
-        wav_path = webm_path.replace(
-            ".webm",
-            ".wav"
-        )
+        tmp.write(audio["bytes"])
+        tmp_path = tmp.name
 
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-i",
-                webm_path,
-                "-ac",
-                "1",
-                wav_path
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
+    signal, samplerate = librosa.load(
+        tmp_path,
+        sr=None,
+        mono=True
+    )
 
-        samplerate, signal = wavfile.read(
-            wav_path
-        )
+    signal = signal.astype(np.float32)
 
-        if signal.ndim > 1:
-            signal = signal[:, 0]
+except Exception as e:
 
-        signal = signal.astype(np.float32)
-
-    except Exception as e:
-
-        st.error("録音データ読込失敗")
-        st.exception(e)
-        st.stop()
+    st.error("録音データ読込失敗")
+    st.exception(e)
+    st.stop()
 
     absbuf = np.abs(signal)
 
