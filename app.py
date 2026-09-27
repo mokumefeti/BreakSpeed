@@ -72,6 +72,14 @@ if "captured_signal" not in st.session_state:
 if "trigger_time" not in st.session_state:
     st.session_state.trigger_time = None
 
+if not isinstance(
+    st.session_state.samples,
+    list
+):
+    st.session_state.samples = (
+        st.session_state.samples.tolist()
+    )
+
 # ==================================================
 # 距離設定
 # ==================================================
@@ -189,6 +197,14 @@ if ctx.state.playing and ctx.audio_receiver:
                 np.abs(audio)
             )
 
+            if not isinstance(
+                st.session_state.samples,
+                list
+            ):
+                st.session_state.samples = list(
+                    st.session_state.samples
+                )
+
             st.session_state.samples.extend(
                 audio.tolist()
             )
@@ -231,6 +247,16 @@ if not st.session_state.post_trigger:
         st.session_state.samples = (
             st.session_state.samples[-MAX_BUFFER:]
         )
+
+st.write(
+    "samples type =",
+    type(st.session_state.samples)
+)
+
+st.write(
+    "sample count =",
+    len(st.session_state.samples)
+)
 
 # ==================================================
 # 状態表示
