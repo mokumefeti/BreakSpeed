@@ -128,26 +128,27 @@ st.header("解析設定")
 threshold_ratio = st.slider(
     "ピーク感度",
     0.05,
+    1.00,
     0.50,
-    0.15,
     0.01
 )
 
 trigger_level = st.slider(
     "ブレイク検出レベル",
     1000,
-    30000,
-    8000,
+    20000,
+    6000,
     500
 )
 
-record_sec = st.slider(
-    "ブレイク後録音時間",
-    1.0,
-    5.0,
-    3.0,
-    0.5
-)
+# record_sec = st.slider(
+#     "ブレイク後録音時間",
+#     1.0,
+#     5.0,
+#     3.0,
+#     0.5
+# )
+record_sec = 1.5
 
 # ==================================================
 # WebRTC
@@ -240,7 +241,7 @@ if ctx.state.playing and ctx.audio_receiver:
 
 if not st.session_state.post_trigger:
 
-    MAX_BUFFER = 1.5 * SAMPLERATE
+    MAX_BUFFER = record_sec * SAMPLERATE
 
     if len(st.session_state.samples) > MAX_BUFFER:
 
