@@ -1,8 +1,6 @@
 streamlit
+streamlit-webrtc
 numpy
 scipy
 plotly
-streamlit-mic-recorder
-librosa
-audioread
-soundfile
+av
